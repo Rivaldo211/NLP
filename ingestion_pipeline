@@ -3,7 +3,7 @@
 
 import os
 import logging
-#initialise le yaml file
+import sys
 import yaml
 from os.path import split
 
@@ -28,12 +28,16 @@ sh.setLevel(logging.INFO)
 fh.setFormatter(formatter)
 sh.setFormatter(formatter)
 
+
 # load Api key
 load_dotenv()
 
 # Paths
-INDEX_PATH = "./storage/faiss_db"
-DATABASE_PATH = "C:/Users/Rivaldo/Documents/ATIS/orkl.eu-2025-09-25-txtonly-subset/"
+with open("config.yaml", "r", encoding="utf-8") as f:
+    config = yaml.safe_load(f)
+
+INDEX_PATH = config["paths"]["index_path"]
+DATABASE_PATH = config["paths"]["database_path"]
 
 def embed_documents(doc_path: str):
     if os.path.exists(doc_path):
@@ -104,16 +108,20 @@ def _info(embedding_model: str, chunk_size=1000, chunk_overlap=200):
 
 
 SYSTEM_PROMPT_TEMPLATE = """
-        You are a factual assistant. Use ONLY the provided CONTEXT to answer the question.
+        You are a cybersecurity and CTI assistant for students and analysts.
+        Use ONLY the provided CONTEXT to answer the question.
         context:  {context}
         question: {question} 
-        If the information is not present in the CONTEXT, respond exactly with 'Das weiss ich nicht'.
-        Keep answers concise and, when appropriate, cite the source(s) in brackets.
-        Always say 'Hello' at the beginning of the answer.
-        Always say 'thanks for asking' at the end of the answer
+        The user will enter a 'question', which can be : a text or a keyword with question mark at the end
+        or a text or a keyword without question mark at the end.
+        your job:
+        Interpret the input as a technical question, even if it doesn’t have a question mark.
+        If the input is too short or ambiguous (e.g. “api”), start with a brief general definition relevant to cybersecurity/CTI.
+        If the information is not present in the CONTEXT, respond exactly with 'I don't know, please make sure that a question mark at the end and try again or another questions'.
+        Keep answers concise and, always say 'Hello' at the beginning of the answer.
+        in next line always say 'thanks for asking' at the end of the answer
 """
 
-API_KEY = os.getenv("API_KEY")
 
 class LLM:
 
@@ -124,35 +132,33 @@ class LLM:
         logging.info("Vector base is ready.")
 
     def get_llm(self):
-        return ChatGroq(model="x-ai/grok-4.1-fast:free", api_key=API_KEY, temperature=0.8)
+        return ChatGroq(model="openai/gpt-oss-120b", temperature=0.8)
 
     def answer(self, query: str) -> str:
 
         def format_docs(docs):
             return "\n".join(doc.page_content for doc in docs)
 
-        chain =   {"question": RunnablePassthrough(), "context": self.retriever } | self.prompt | self.get_llm() | StrOutputParser()
+        chain =   ({"question": RunnablePassthrough(),"context": self.retriever |format_docs}
+                   |self.prompt |self.get_llm() |StrOutputParser())
         return chain.invoke(query)
 
 def main():
-    logging.info("Welcome to a CTI Assistant")
-    try:
-        assistant = LLM()
-        logging.info(f"Enter 'quit' or 'exit' to exit.")
-        while True:
-            query = input("\nQuestion: ")
-            if query.lower() in ["quit", "exit"]:
-                logging.info(f"Exiting CTI Assistant...")
-                break
+    print("Welcome to a CTI Assistant\n Enter 'quit' or 'exit' to exit to the assistant.")
 
-            try:
-                answer = assistant.answer(query)
-                logging.info(f"\nAnswer: {answer}")
-            except Exception as e:
-                logging.error(f"Error to generate answer : {str(e)}")
+    while True:
+        query = input("\nQuestion: ")
+        if query.lower() in ("quit", "exit"):
+            print("Goodbye!")
+            sys.exit(0)
 
-    except Exception as e:
-        logging.error(f"Error to initialise the Llm : {str(e)}")
+        try:
+            llm = LLM()
+            response = llm.answer(query)
+            print(response)
+        except Exception as ex:
+            print(f"Error to generate answer : {str(ex)}")
 
 if __name__ == "__main__":
+    print("Configuration loaded...")
     main()
