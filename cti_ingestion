@@ -1,5 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import logging
+#initialise le yaml file
+import yaml
 from os.path import split
 
 from dotenv import load_dotenv
@@ -9,7 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from datetime import datetime
 
-# Configure logging
+# Logging Configuration
 formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(funcName)-30s %(message)s')
 fh = logging.FileHandler("main.log")
 sh = logging.StreamHandler()
@@ -18,13 +23,7 @@ sh.setLevel(logging.INFO)
 fh.setFormatter(formatter)
 sh.setFormatter(formatter)
 
-logger = logging.getLogger(__name__)
-logger.addHandler(fh)
-logger.addHandler(sh)
-logger.setLevel(logging.DEBUG)
-logger.propagate = False
-
-# Charger les variables d'environnement
+# load Api key
 load_dotenv()
 
 # Paths
@@ -32,17 +31,20 @@ INDEX_PATH = "./storage/faiss_db"
 DATABASE_PATH = "C:/Users/Rivaldo/Documents/ATIS/orkl.eu-2025-09-25-txtonly-subset/"
 
 def embed_documents(doc_path: str):
-    # load all .txt in DATABASE_PATH
-    loader = DirectoryLoader(DATABASE_PATH, glob="*.txt", loader_cls=TextLoader, loader_kwargs={"encoding": "utf-8"})
-    docs = loader.load()
+    if os.path.exists(doc_path):
+        loader = DirectoryLoader(doc_path, glob="*.txt", loader_cls=TextLoader, loader_kwargs={"encoding": "utf-8"})
+        docs = loader.load()
+        logging.info("Loading DATABASE")
 
-    # split
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
-    splits = text_splitter.split_documents(docs)
-    return splits
+        # split
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+        splits = text_splitter.split_documents(docs)
+        return splits
+    else:
+        return logging.error("Path Error")
 
 def init_retriever():
     try:
@@ -54,14 +56,14 @@ def init_retriever():
 
         # load or create FAISS-Base
         if os.path.exists(INDEX_PATH):
-            logger.info("Loading existing FAISS database...")
+            logging.info("Loading existing FAISS database...")
             vectordb = FAISS.load_local(
                 folder_path=INDEX_PATH,
                 embeddings=embeddings,
                 allow_dangerous_deserialization=True
             )
         else:
-            logger.info("Creating a new FAISS database...")
+            logging.info("Creating a new FAISS database...")
             vectordb = FAISS.from_documents(splits, embeddings)
             vectordb.save_local(folder_path=INDEX_PATH)
 
@@ -72,9 +74,9 @@ def init_retriever():
         )
 
     except Exception as e:
-        logger.error(f"Error initializing the retriever : {str(e)}")
+        logging.error(f"Error initializing the retriever : {str(e)}")
         raise
-    
+
 # save Metadaten
 def _info(embedding_model: str, chunk_size=1000, chunk_overlap=200):
     metadaten_docs= []
@@ -96,6 +98,6 @@ def _info(embedding_model: str, chunk_size=1000, chunk_overlap=200):
     return metadaten_docs
 
 if __name__ == "__main__":
-    logger.info("Initialisation du retriever...")
+    logging.info("Initialisation du retriever...")
     retriever = init_retriever()
-    logger.info("Vector base is ready.")
+    logging.info("Vector base is ready.")
